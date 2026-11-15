@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Railway Clock Screensaver</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  body.idle { cursor: none; }
+  #stage { width: min(78vw, 78vh); height: min(78vw, 78vh); will-change: transform; }
+  svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: 5vh; text-align: center;
+    font: 14px/1.4 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    letter-spacing: .04em; color: #8a8372; opacity: 1; transition: opacity 1.2s;
+    pointer-events: none; user-select: none;
+  }
+  body.idle #hint { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg viewBox="-104 -104 208 208" role="img" aria-label="Railway station clock">
+    <defs>
+      <radialGradient id="face" cx="50%" cy="46%" r="56%">
+        <stop offset="0" stop-color="#f3ead0"/>
+        <stop offset=".55" stop-color="#e9dcb6"/>
+        <stop offset=".85" stop-color="#d3bd88"/>
+        <stop offset="1" stop-color="#a98a4f"/>
+      </radialGradient>
+      <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#6b6252"/>
+        <stop offset=".5" stop-color="#3a342b"/>
+        <stop offset="1" stop-color="#57503f"/>
+      </linearGradient>
+      <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0.8" dy="1.4" stdDeviation="1.1" flood-color="#2a1d05" flood-opacity=".45"/>
+      </filter>
+    </defs>
+
+    <circle r="101" fill="url(#rim)"/>
+    <circle r="97.5" fill="#2b261f"/>
+    <circle r="96" fill="url(#face)"/>
+    <g id="ticks" fill="#141210"></g>
+
+    <g filter="url(#shadow)">
+      <polygon id="hour"   fill="#16130f" points="-4.9,24 4.9,24 4.1,-60 -4.1,-60"/>
+      <polygon id="minute" fill="#16130f" points="-4,24 4,24 2.9,-88 -2.9,-88"/>
+    </g>
+    <g id="second" filter="url(#shadow)" fill="#8f1a1c">
+      <rect x="-0.8" y="-58" width="1.6" height="88" rx=".8"/>
+      <circle cy="-60" r="7.6"/>
+      <circle r="2.2"/>
+    </g>
+  </svg>
+</div>
+
+<script>
+(function () {
+  // Dial: 12 heavy hour bars, 48 fine minute bars
+  var ticks = document.getElementById('ticks'), NS = 'http://www.w3.org/2000/svg';
+  for (var i = 0; i < 60; i++) {
+    var r = document.createElementNS(NS, 'rect'), hourMark = i % 5 === 0;
+    var w = hourMark ? 6.4 : 2.2, len = hourMark ? 23 : 6.5;
+    r.setAttribute('x', -w / 2); r.setAttribute('y', -90);
+    r.setAttribute('width', w); r.setAttribute('height', len);
+    r.setAttribute('transform', 'rotate(' + i * 6 + ')');
+    ticks.appendChild(r);
+  }
+
+  var hourEl = document.getElementById('hour'),
+      minEl = document.getElementById('minute'),
+      secEl = document.getElementById('second'),
+      stage = document.getElementById('stage');
+
+  var SWEEP = 58.5;          // seconds the red hand takes for one revolution
+                             // it then rests at 12 until the minute impulse
+
+  function frame() {
+    var d = new Date();
+    var s = d.getSeconds() + d.getMilliseconds() / 1000;
+    var m = d.getMinutes(), h = d.getHours() % 12;
+
+    // Second hand: smooth sweep, slightly fast, then stop-to-go pause at the top
+    var sec = Math.min(s / SWEEP, 1) * 360;
+
+    // Minute hand: steps once a minute, with the small mechanical overshoot
+    var kick = Math.exp(-s * 11) * Math.cos(s * 26);   // 1 at s=0, settles in ~0.4s
+    var min = m * 6 - 6 * kick;
+    var hr = h * 30 + m * 0.5 - 0.5 * kick;
+
+    secEl.setAttribute('transform', 'rotate(' + sec.toFixed(3) + ')');
+    minEl.setAttribute('transform', 'rotate(' + min.toFixed(3) + ')');
+    hourEl.setAttribute('transform', 'rotate(' + hr.toFixed(3) + ')');
+
+    // Very slow drift so the image never sits on the same pixels (burn-in guard)
+    var t = d.getTime() / 1000;
+    var dx = Math.sin(t / 97) * 6, dy = Math.cos(t / 131) * 6;
+    stage.style.transform = 'translate(' + dx.toFixed(2) + 'vmin,' + dy.toFixed(2) + 'vmin)';
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // Full screen on click / F, keep the display awake, hide the cursor when idle
+  var wake = null;
+  function keepAwake() {
+    try {
+      if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (w) { wake = w; }, function () {});
+    } catch (e) {}
+  }
+  function toggleFull() {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else { var p = document.documentElement.requestFullscreen(); if (p && p.catch) p.catch(function () {}); }
+    } catch (e) {}
+    keepAwake();
+  }
+  document.addEventListener('click', toggleFull);
+  document.addEventListener('keydown', function (e) { if (e.key === 'f' || e.key === 'F') toggleFull(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && wake) keepAwake(); });
+
+  var idleTimer;
+  function wakeUI() {
+    document.body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () { document.body.classList.add('idle'); }, 3000);
+  }
+  document.addEventListener('mousemove', wakeUI);
+  document.addEventListener('touchstart', wakeUI);
+  wakeUI();
+})();
+</script>
+</body>
+</html>
