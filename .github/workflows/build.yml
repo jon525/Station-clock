@@ -1,0 +1,23 @@
+name: Build Windows screensaver
+
+on:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile StationClock.scr
+        shell: cmd
+        run: >
+          "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize+
+          /out:StationClock.scr /r:System.Windows.Forms.dll /r:System.Drawing.dll windows\StationClock.cs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StationClock
+          path: StationClock.scr
